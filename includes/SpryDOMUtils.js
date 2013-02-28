@@ -1,4 +1,4 @@
-// SpryDOMUtils.js - version 0.6 - Spry Pre-Release 1.6.1
+// SpryDOMUtils.js - version 0.13 - Spry Pre-Release 1.7
 //
 // Copyright (c) 2007. Adobe Systems Incorporated.
 // All rights reserved.
@@ -27,7 +27,9 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-var Spry; if (!Spry) Spry = {}; if (!Spry.Utils) Spry.Utils = {};
+(function() { // BeginSpryComponent
+
+if (typeof Spry == "undefined") window.Spry = {}; if (!Spry.Utils) Spry.Utils = {};
 
 //////////////////////////////////////////////////////////////////////
 //
@@ -56,6 +58,35 @@ Spry.$ = function(element)
 //
 //////////////////////////////////////////////////////////////////////
 
+Spry.Utils.getAttribute = function(ele, name)
+{
+	ele = Spry.$(ele);
+	if (!ele || !name)
+		return null;
+
+	// We need to wrap getAttribute with a try/catch because IE will throw
+	// an exception if you call it with a namespace prefixed attribute name
+	// that doesn't exist.
+
+	try { var value = ele.getAttribute(name); }
+	catch (e) { value == undefined; }
+
+	// XXX: Workaround for Safari 2.x and earlier:
+	//
+	// If value is undefined, the attribute didn't exist. Check to see if this is
+	// a namespace prefixed attribute name. If it is, remove the ':' from the name
+	// and try again. This allows us to support spry attributes of the form
+	// "spry:region" and "spryregion".
+
+	if (value == undefined && name.search(/:/) != -1)
+	{
+		try { var value = ele.getAttribute(name.replace(/:/, "")); }
+		catch (e) { value == undefined; }
+	}
+
+	return value;
+};
+
 Spry.Utils.setAttribute = function(ele, name, value)
 {
 	ele = Spry.$(ele);
@@ -68,7 +99,28 @@ Spry.Utils.setAttribute = function(ele, name, value)
 	if (name == "class")
 		ele.className = value;
 	else
-		ele.setAttribute(name, value);
+	{
+		// I'm probably being a bit paranoid, but given the fact that
+		// getAttribute() throws exceptions when dealing with namespace
+		// prefixed attributes, I'm going to wrap this setAttribute()
+		// call with try/catch just in case ...
+
+		try { ele.setAttribute(name, value); } catch(e) {}
+
+		// XXX: Workaround for Safari 2.x and earlier:
+		//
+		// If this is a namespace prefixed attribute, check to make
+		// sure an attribute was created. This is necessary because some
+		// older versions of Safari (2.x and earlier) drop the namespace
+		// prefixes. If the attribute was munged, try removing the ':'
+		// character from the attribute name and setting the attribute
+		// using the resulting name. The idea here is that even if we
+		// remove the ':' character, Spry.Utils.getAttribute() will still
+		// find the attribute.
+
+		if (name.search(/:/) != -1 && ele.getAttribute(name) == undefined)
+			ele.setAttribute(name.replace(/:/, ""), value);
+	}
 };
 
 Spry.Utils.removeAttribute = function(ele, name)
@@ -77,20 +129,25 @@ Spry.Utils.removeAttribute = function(ele, name)
 	if (!ele || !name)
 		return;
 
-	try
-	{
-		ele.removeAttribute(name);
+	try { ele.removeAttribute(name); } catch(e) {}
 
-		// IE doesn't allow you to remove the "class" attribute.
-		// It requires you to remove "className" instead, so go
-		// ahead and try to remove that too.
-		//
-		// XXX: We should add a check for IE here instead of doing
-		// it for every browser.
+	// XXX: Workaround for Safari 2.x and earlier:
+	//
+	// If this is a namespace prefixed attribute, make sure we
+	// also remove any attributes with the same name, but without
+	// the ':' character.
 
-		if (name == "class")
-			ele.removeAttribute("className");
-	} catch(e) {}
+	if (name.search(/:/) != -1)
+		ele.removeAttribute(name.replace(/:/, ""));
+
+	// XXX: Workaround for IE
+	//
+	// IE doesn't allow you to remove the "class" attribute.
+	// It requires you to remove "className" instead, so go
+	// ahead and try to remove that too.
+
+	if (name == "class")
+		ele.removeAttribute("className");
 };
 
 Spry.Utils.addClassName = function(ele, className)
@@ -142,7 +199,7 @@ Spry.Utils.styleStringToObject = function(styleStr)
 	var o = {};
 	if (styleStr)
 	{
-		pvA = styleStr.split(";");
+		var pvA = styleStr.split(";");
 		for (var i = 0; i < pvA.length; i++)
 		{
 			var pv = pvA[i];
@@ -250,6 +307,17 @@ Spry.Utils.unbindEventListenerFromElement = function(element, eventType, handler
 	return handler;
 };
 
+Spry.Utils.cancelEvent = function(e)
+{
+	if (e.preventDefault) e.preventDefault();
+	else e.returnValue = false;
+	if (e.stopPropagation) e.stopPropagation();
+	else e.cancelBubble = true;
+
+	return false;
+};
+
+
 Spry.Utils.addLoadListener = function(handler)
 {
 	if (typeof window.addEventListener != 'undefined')
@@ -258,6 +326,21 @@ Spry.Utils.addLoadListener = function(handler)
 		document.addEventListener('load', handler, false);
 	else if (typeof window.attachEvent != 'undefined')
 		window.attachEvent('onload', handler);
+};
+
+Spry.Utils.isDescendant = function(parent, child)
+{
+	if (parent && child)
+	{
+		child = child.parentNode;
+		while (child)
+		{
+			if (parent == child)
+				return true;
+			child = child.parentNode;
+		}
+	}
+	return false;
 };
 
 Spry.Utils.getAncestor = function(ele, selector)
@@ -289,6 +372,27 @@ Spry.Utils.getAncestor = function(ele, selector)
 
 Spry.$$ = function(selectorSequence, rootNode)
 {
+	var matches = [];
+	Spry.$$.addExtensions(matches);
+
+	// If the first argument to $$() is an object, it
+	// is assumed that all args are either a DOM element
+	// or an array of DOM elements, in which case we
+	// simply append all DOM elements to our special
+	// matches array and return immediately.
+
+	if (typeof arguments[0] == "object")
+	{
+		for (var i = 0; i < arguments.length; i++)
+		{
+			if (arguments[i].constructor == Array)
+				matches.push.apply(matches, arguments[i]);
+			else
+				matches.push(arguments[i]);
+		}
+		return matches;
+	}
+
 	if (!rootNode)
 		rootNode = document;
 	else
@@ -296,8 +400,6 @@ Spry.$$ = function(selectorSequence, rootNode)
 
 	var sequences = Spry.$$.tokenizeSequence(selectorSequence);
 
-	var matches = [];
-	Spry.$$.addExtensions(matches);
 	++Spry.$$.queryID;
 
 	var nid = 0;
@@ -334,6 +436,7 @@ Spry.$$.Token = function()
 	this.id = "";
 	this.classes = [];
 	this.attrs = [];
+
 	this.pseudos = [];
 };
 
@@ -527,7 +630,12 @@ Spry.$$.combinatorFuncs = {
 				for (var j = 0; j < ne; j++)
 				{
 					var e = ea[j];
-					if (token.match(e, true))
+
+					// If the token matches, add it to our results. We have
+					// to make sure e is an element because IE6 returns the DOCTYPE
+					// tag as a comment when '*' is used in the call to getElementsByTagName().
+
+					if (e.nodeType == 1 /* Node.ELEMENT_NODE */ && token.match(e, true))
 						results.push(e);
 					e.spry$$uid = uid;
 				}
@@ -943,7 +1051,12 @@ Spry.$$.getMatchingElements = function(nodes, token)
 		for (var j = 0; j < ne; j++)
 		{
 			var e = ea[j];
-			if (token.match(e, true))
+
+			// If the token matches, add it to our results. We have
+			// to make sure e is an element because IE6 returns the DOCTYPE
+			// tag as a comment when '*' is used in the call to getElementsByTagName().
+
+			if (e.nodeType == 1 /* Node.ELEMENT_NODE */ && token.match(e, true))
 				results.push(e);
 		}
 	}
@@ -1067,3 +1180,5 @@ Spry.$$.Results.setProperty = function(prop, value)
 	}
 	return this;
 };
+
+})(); // EndSpryComponent

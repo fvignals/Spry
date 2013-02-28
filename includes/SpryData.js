@@ -1,4 +1,4 @@
-// SpryData.js - version 0.45 - Spry Pre-Release 1.6.1
+// SpryData.js - version 0.49 - Spry Pre-Release 1.6.1
 //
 // Copyright (c) 2006. Adobe Systems Incorporated.
 // All rights reserved.
@@ -259,6 +259,98 @@ Spry.Utils.addLoadListener = function(handler)
 		window.attachEvent('onload', handler);
 };
 
+Spry.Utils.getAttribute = function(ele, name)
+{
+	ele = Spry.$(ele);
+	if (!ele || !name)
+		return null;
+
+	// We need to wrap getAttribute with a try/catch because IE will throw
+	// an exception if you call it with a namespace prefixed attribute name
+	// that doesn't exist.
+
+	try { var value = ele.getAttribute(name); }
+	catch (e) { value == undefined; }
+
+	// XXX: Workaround for Safari 2.x and earlier:
+	//
+	// If value is undefined, the attribute didn't exist. Check to see if this is
+	// a namespace prefixed attribute name. If it is, remove the ':' from the name
+	// and try again. This allows us to support spry attributes of the form
+	// "spry:region" and "spryregion".
+
+	if (value == undefined && name.search(/:/) != -1)
+	{
+		try { var value = ele.getAttribute(name.replace(/:/, "")); }
+		catch (e) { value == undefined; }
+	}
+
+	return value;
+};
+
+Spry.Utils.setAttribute = function(ele, name, value)
+{
+	ele = Spry.$(ele);
+	if (!ele || !name)
+		return;
+
+	// IE doesn't allow you to set the "class" attribute. You
+	// have to set the className property instead.
+
+	if (name == "class")
+		ele.className = value;
+	else
+	{
+		// I'm probably being a bit paranoid, but given the fact that
+		// getAttribute() throws exceptions when dealing with namespace
+		// prefixed attributes, I'm going to wrap this setAttribute()
+		// call with try/catch just in case ...
+
+		try { ele.setAttribute(name, value); } catch(e) {}
+
+		// XXX: Workaround for Safari 2.x and earlier:
+		//
+		// If this is a namespace prefixed attribute, check to make
+		// sure an attribute was created. This is necessary because some
+		// older versions of Safari (2.x and earlier) drop the namespace
+		// prefixes. If the attribute was munged, try removing the ':'
+		// character from the attribute name and setting the attribute
+		// using the resulting name. The idea here is that even if we
+		// remove the ':' character, Spry.Utils.getAttribute() will still
+		// find the attribute.
+
+		if (name.search(/:/) != -1 && ele.getAttribute(name) == undefined)
+			ele.setAttribute(name.replace(/:/, ""), value);
+	}
+};
+
+Spry.Utils.removeAttribute = function(ele, name)
+{
+	ele = Spry.$(ele);
+	if (!ele || !name)
+		return;
+
+	try { ele.removeAttribute(name); } catch(e) {}
+
+	// XXX: Workaround for Safari 2.x and earlier:
+	//
+	// If this is a namespace prefixed attribute, make sure we
+	// also remove any attributes with the same name, but without
+	// the ':' character.
+
+	if (name.search(/:/) != -1)
+		ele.removeAttribute(name.replace(/:/, ""));
+
+	// XXX: Workaround for IE
+	//
+	// IE doesn't allow you to remove the "class" attribute.
+	// It requires you to remove "className" instead, so go
+	// ahead and try to remove that too.
+
+	if (name == "class")
+		ele.removeAttribute("className");
+};
+
 Spry.Utils.addClassName = function(ele, className)
 {
 	ele = Spry.$(ele);
@@ -273,22 +365,6 @@ Spry.Utils.removeClassName = function(ele, className)
 	if (!ele || !className || (ele.className && ele.className.search(new RegExp("\\b" + className + "\\b")) == -1))
 		return;
 	ele.className = ele.className.replace(new RegExp("\\s*\\b" + className + "\\b", "g"), "");
-};
-
-Spry.Utils.getObjectByName = function(name)
-{
-	var result = null;
-	if (name)
-	{
-		var lu = window;
-		var objPath = name.split(".");
-		for (var i = 0; lu && i < objPath.length; i++)
-		{
-			result = lu[objPath[i]];
-			lu = result;
-		}
-	}
-	return result;
 };
 
 //////////////////////////////////////////////////////////////////////
@@ -314,6 +390,22 @@ Spry.$ = function(element)
 } // if (!Spry.$$)
 
 //////////////////////////////////////////////////////////////////////
+
+Spry.Utils.getObjectByName = function(name)
+{
+	var result = null;
+	if (name)
+	{
+		var lu = window;
+		var objPath = name.split(".");
+		for (var i = 0; lu && i < objPath.length; i++)
+		{
+			result = lu[objPath[i]];
+			lu = result;
+		}
+	}
+	return result;
+};
 
 Spry.Utils.eval = function(str)
 {
@@ -965,13 +1057,13 @@ Spry.Data.initRegions = function(rootNode)
 			// reference the region by name if necessary.
 
 			var attrName = "spry:region";
-			var attr = node.attributes.getNamedItem(attrName);
-			if (!attr)
+			var attrValue = Spry.Utils.getAttribute(node, attrName);
+			if (attrValue == undefined)
 			{
 				attrName = "spry:detailregion";
-				attr = node.attributes.getNamedItem(attrName);
+				attrValue = Spry.Utils.getAttribute(node, attrName);
 			}
-			if (attr)
+			if (attrValue)
 			{
 				if (lastRegionFound)
 				{
@@ -987,21 +1079,18 @@ Spry.Data.initRegions = function(rootNode)
 					}
 				}
 
-				if (attr.value)
+				attrValue = node.getAttribute("id");
+				if (!attrValue)
 				{
-					attr = node.attributes.getNamedItem("id");
-					if (!attr || !attr.value)
-					{
-						// The node is missing an id attribute so add one.
-						node.setAttribute("id", "spryregion" + (++Spry.Data.initRegions.nextUniqueRegionID));
-					}
-
-					lastRegionFound = node;
-					return true;
+					// The node is missing an id attribute so add one.
+					node.setAttribute("id", "spryregion" + (++Spry.Data.initRegions.nextUniqueRegionID));
 				}
-				else
-					Spry.Debug.reportError(attrName + " attributes require one or more data set names as values!");
+
+				lastRegionFound = node;
+				return true;
 			}
+			else if (attrValue == "")
+				Spry.Debug.reportError(attrName + " attributes require one or more data set names as values!");
 		}
 		catch(e) {}
 		return false;
@@ -1017,16 +1106,18 @@ Spry.Data.initRegions = function(rootNode)
 		var isDetailRegion = false;
 
 		// Get the region name.
-		name = rgn.attributes.getNamedItem("id").value;
+		name = rgn.getAttribute("id");
 
-		attr = rgn.attributes.getNamedItem("spry:region");
-		if (!attr)
+		var attrName = "spry:region";
+		var attrValue = Spry.Utils.getAttribute(rgn, attrName);
+		if (attrValue == undefined)
 		{
-			attr = rgn.attributes.getNamedItem("spry:detailregion");
+			attrName = "spry:detailregion";
+			attrValue = Spry.Utils.getAttribute(rgn, attrName);
 			isDetailRegion = true;
 		}
 
-		if (!attr.value)
+		if (!attrValue)
 		{
 			Spry.Debug.reportError("spry:region and spry:detailregion attributes require one or more data set names as values!");
 			continue;
@@ -1034,13 +1125,13 @@ Spry.Data.initRegions = function(rootNode)
 
 		// Remove the spry:region or spry:detailregion attribute so it doesn't appear in
 		// the output generated by our processing of the dynamic region.
-		rgn.attributes.removeNamedItem(attr.nodeName);
+		Spry.Utils.removeAttribute(rgn, attrName);
 
 		// Remove the hiddenRegionCSS class from the rgn.
 		Spry.Utils.removeClassName(rgn, Spry.Data.Region.hiddenRegionClassName);
 
 		// Get the DataSets that should be bound to the region.
-		dataSets = Spry.Data.Region.strToDataSetsArray(attr.value);
+		dataSets = Spry.Data.Region.strToDataSetsArray(attrValue);
 
 		if (!dataSets.length)
 		{
@@ -1059,18 +1150,18 @@ Spry.Data.initRegions = function(rootNode)
 		// Check if there are any attributes on the region node that remap
 		// the default states.
 
-		attr = rgn.attributes.getNamedItem("spry:readystate");
-		if (attr && attr.value)
-			regionStateMap["ready"] = attr.value;
-		attr = rgn.attributes.getNamedItem("spry:errorstate");
-		if (attr && attr.value)
-			regionStateMap["error"] = attr.value;
-		attr = rgn.attributes.getNamedItem("spry:loadingstate");
-		if (attr && attr.value)
-			regionStateMap["loading"] = attr.value;
-		attr = rgn.attributes.getNamedItem("spry:expiredstate");
-		if (attr && attr.value)
-			regionStateMap["expired"] = attr.value;
+		attrValue = Spry.Utils.getAttribute(rgn, "spry:readystate");
+		if (attrValue)
+			regionStateMap["ready"] = attrValue;
+		attrValue = Spry.Utils.getAttribute(rgn, "spry:errorstate");
+		if (attrValue)
+			regionStateMap["error"] = attrValue;
+		attrValue = Spry.Utils.getAttribute(rgn, "spry:loadingstate");
+		if (attrValue)
+			regionStateMap["loading"] = attrValue;
+		attrValue = Spry.Utils.getAttribute(rgn, "spry:expiredstate");
+		if (attrValue)
+			regionStateMap["expired"] = attrValue;
 
 		// Find all of the processing instruction regions in the region.
 		// Insert comments around the regions we find so we can identify them
@@ -1090,8 +1181,8 @@ Spry.Data.initRegions = function(rootNode)
 					for (var i = 0; i < numPI; i++)
 					{
 						var piName = Spry.Data.Region.PI.orderedInstructions[i];
-						var attr = attributes.getNamedItem(piName);
-						if (!attr)
+						var attrValue = Spry.Utils.getAttribute(node, piName);
+						if (attrValue == undefined)
 							continue;
 
 						var piDesc = Spry.Data.Region.PI.instructions[piName];
@@ -1126,10 +1217,10 @@ Spry.Data.initRegions = function(rootNode)
 						// If this is a spry:state processing instruction, record the state name
 						// so we know that we should re-generate the region if we ever see that state.
 
-						if (piName == "spry:state")
-							regionStates[attr.value] = true;
+						if (piName == "spry:state" || piName == "sprystate")
+							regionStates[attrValue] = true;
 
-						node.removeAttribute(piName);
+						Spry.Utils.removeAttribute(node, piName);
 					}
 
 					if (Spry.Data.Region.enableBehaviorAttributes)
@@ -1137,12 +1228,12 @@ Spry.Data.initRegions = function(rootNode)
 						var bAttrs = Spry.Data.Region.behaviorAttrs;
 						for (var behaviorAttrName in bAttrs)
 						{
-							var bAttr = attributes.getNamedItem(behaviorAttrName);
-							if (bAttr)
+							var bAttrValue = Spry.Utils.getAttribute(node, behaviorAttrName);
+							if (bAttrValue != undefined)
 							{
 								hasBehaviorAttributes = true;
 								if (bAttrs[behaviorAttrName].setup)
-									bAttrs[behaviorAttrName].setup(node, bAttr.value);
+									bAttrs[behaviorAttrName].setup(node, bAttrValue);
 							}
 						}
 					}
@@ -1225,7 +1316,7 @@ Spry.Data.getDataSetByName = function(dataSetName)
 	// specified name, and then make sure that its value is an
 	// object with at least 2 of the data set base functions defined.
 
-	var ds = window[dataSetName];
+	var ds = Spry.Utils.getObjectByName(dataSetName);
 	if (typeof ds != "object" || !ds.getData || !ds.filter)
 		return null;
 	return ds;
@@ -2650,6 +2741,75 @@ Spry.Data.XMLDataSet.createObjectForNode = function(node, encodeText, encodeCDat
 	return obj;
 };
 
+Spry.Data.XMLDataSet.evaluateXPath = function(contextNode, xpath)
+{
+	if (window.ExprContext && window.xpathParse)
+	{
+		// The Google XPath library is available so use it  to find the nodes
+		// that will make up our data set. The result should be an array of
+		// subtrees that we need to flatten.
+	
+		var ctx = new ExprContext(contextNode);
+		var pathExpr = xpathParse(xpath);
+		var e = pathExpr.evaluate(ctx);
+	
+		// XXX: Note that we should check the result type of the evaluation
+		// just in case it's a boolean, string, or number value instead of
+		// a node set.
+	
+		return e.nodeSetValue();
+	}
+
+	// The Google XPath library is *NOT* available so handle the 80% case.
+	// The following paths are handled by the code below:
+	//
+	//   /gallery/photos/photo
+	//   /gallery/photos/*
+	//   gallery/photos/photo
+	//   /gallery//photo
+	//   //photo
+	//   //photo/@path
+	//   //photo/@*
+
+	var results = [];
+	var ctx = [contextNode];
+	if (contextNode && xpath)
+	{
+		var immediateChild = true;
+		var tknRegExp = /\/\/?|[^\/]+/g;
+		var matches = tknRegExp.exec(xpath);
+		while (matches)
+		{
+			var tkn = matches[0];
+			if (tkn == "/" || tkn == "//") 
+				immediateChild = (tkn == "/");
+			else
+			{
+				var isAttr = (tkn.charAt(0) == "@");
+				var nodeName = isAttr ? tkn.substr(1) : tkn;
+				
+				results = [];
+				for (var i = 0; i < ctx.length; i++)
+				{
+					var cnode = ctx[i];
+					var list = isAttr ? cnode.attributes : (immediateChild ? cnode.childNodes : cnode.getElementsByTagName(nodeName));
+					for (var j = 0; j < list.length; j++)
+					{
+						var n = list[j];
+						if ((!isAttr && !immediateChild) || ((n.nodeType == 1 || n.nodeType == 2) && (nodeName == "*" || n.nodeName == nodeName)))
+							results.push(n);
+					}
+				}
+
+				ctx = results;
+			}
+
+			matches = tknRegExp.exec(xpath);
+		}
+	}
+	return results;
+};
+
 Spry.Data.XMLDataSet.getRecordSetFromXMLDoc = function(xmlDoc, path, suppressColumns, entityEncodeStrings)
 {
 	if (!xmlDoc || !path)
@@ -2662,19 +2822,7 @@ Spry.Data.XMLDataSet.getRecordSetFromXMLDoc = function(xmlDoc, path, suppressCol
 	recordSet.data = new Array;
 	recordSet.getData = function() { return this.data; };
 
-	// Use the XPath library to find the nodes that will
-	// make up our data set. The result should be an array
-	// of subtrees that we need to flatten.
-
-	var ctx = new ExprContext(xmlDoc);
-	var pathExpr = xpathParse(path);
-	var e = pathExpr.evaluate(ctx);
-
-	// XXX: Note that we should check the result type of the evaluation
-	// just in case it's a boolean, string, or number value instead of
-	// a node set.
-
-	var nodeArray = e.nodeSetValue();
+	var nodeArray = Spry.Data.XMLDataSet.evaluateXPath(xmlDoc, path);
 
 	var isDOMNodeArray = true;
 
@@ -3282,7 +3430,7 @@ Spry.Data.Region.prototype.setState = function(stateName, suppressNotfications)
 	// If the region has content that is specific to this
 	// state, regenerate the region so that its markup is updated.
 
-	if (this.states[stateName])
+	if (this.states[this.currentState])
 	{
 		var notificationData = { state: this.currentState };
 		if (!suppressNotfications)
@@ -3400,14 +3548,25 @@ Spry.Data.Region.behaviorAttrs["spry:select"] =
 	attach: function(rgn, node, value)
 	{
 		var selectGroupName = null;
-		try { selectGroupName = node.attributes.getNamedItem("spry:selectgroup").value; } catch (e) {}
+		var sgAttrValue = Spry.Utils.getAttribute(node, "spry:selectgroup");
+		if (sgAttrValue != undefined)
+		{
+			selectGroupName = sgAttrValue;
+			Spry.Utils.removeAttribute(node, "spry:selectgroup");
+		}
+
 		if (!selectGroupName)
 			selectGroupName = "default";
 
 		Spry.Utils.addEventListener(node, "click", function(event) { Spry.Utils.SelectionManager.select(selectGroupName, node, value); }, false);
 
-		if (node.attributes.getNamedItem("spry:selected"))
+		if (Spry.Utils.getAttribute(node, "spry:selected") != undefined)
+		{
+			Spry.Utils.removeAttribute(node, "spry:selected");
 			Spry.Utils.SelectionManager.select(selectGroupName, node, value);
+		}
+
+		Spry.Utils.removeAttribute(node, "spry:select");
 	}
 };
 
@@ -3417,6 +3576,7 @@ Spry.Data.Region.behaviorAttrs["spry:hover"] =
 	{
 		Spry.Utils.addEventListener(node, "mouseover", function(event){ Spry.Utils.addClassName(node, value); }, false);
 		Spry.Utils.addEventListener(node, "mouseout", function(event){ Spry.Utils.removeClassName(node, value); }, false);
+		Spry.Utils.removeAttribute(node, "spry:hover");
 	}
 };
 
@@ -3475,7 +3635,7 @@ Spry.Data.Region.behaviorAttrs["spry:even"] =
 					Spry.Utils.addClassName(node, value);
 			}
 		}
-		node.removeAttribute("spry:even");
+		Spry.Utils.removeAttribute(node, "spry:even");
 		node.removeAttribute("spryevenrownumber");
 	}
 };
@@ -3499,7 +3659,7 @@ Spry.Data.Region.behaviorAttrs["spry:odd"] =
 					Spry.Utils.addClassName(node, value);
 			}
 		}
-		node.removeAttribute("spry:odd");
+		Spry.Utils.removeAttribute(node, "spry:odd");
 		node.removeAttribute("spryoddrownumber");
 	}
 };
@@ -3529,7 +3689,7 @@ Spry.Data.Region.behaviorAttrs["spry:setrow"] =
 		if (!value)
 		{
 			Spry.Debug.reportError("The spry:setrow attribute requires a data set name as its value!");
-			node.removeAttribute("spry:setrow");
+			Spry.Utils.removeAttribute(node, "spry:setrow");
 			return;
 		}
 
@@ -3542,7 +3702,7 @@ Spry.Data.Region.behaviorAttrs["spry:setrow"] =
 	attach: function(rgn, node, value)
 	{
 		Spry.Data.Region.setRowAttrClickHandler(node, value, "spryrowid", "setCurrentRow");
-		node.removeAttribute("spry:setrow");
+		Spry.Utils.removeAttribute(node, "spry:setrow");
 		node.removeAttribute("spryrowid");
 	}
 };
@@ -3554,7 +3714,7 @@ Spry.Data.Region.behaviorAttrs["spry:setrownumber"] =
 		if (!value)
 		{
 			Spry.Debug.reportError("The spry:setrownumber attribute requires a data set name as its value!");
-			node.removeAttribute("spry:setrownumber");
+			Spry.Utils.removeAttribute(node, "spry:setrownumber");
 			return;
 		}
 
@@ -3567,7 +3727,7 @@ Spry.Data.Region.behaviorAttrs["spry:setrownumber"] =
 	attach: function(rgn, node, value)
 	{
 		Spry.Data.Region.setRowAttrClickHandler(node, value, "spryrownumber", "setCurrentRowNumber");
-		node.removeAttribute("spry:setrownumber");
+		Spry.Utils.removeAttribute(node, "spry:setrownumber");
 		node.removeAttribute("spryrownumber");
 	}
 };
@@ -3626,7 +3786,7 @@ Spry.Data.Region.behaviorAttrs["spry:sort"] =
 		if (ds && colArray.length > 0)
 			Spry.Utils.addEventListener(node, "click", function(event){ ds.sort(colArray, sortOrder); }, false);
 
-		node.removeAttribute("spry:sort");
+		Spry.Utils.removeAttribute(node, "spry:sort");
 	}
 };
 
@@ -3642,12 +3802,12 @@ Spry.Data.Region.prototype.attachBehaviors = function()
 			var bAttrs = Spry.Data.Region.behaviorAttrs;
 			for (var bAttrName in bAttrs)
 			{
-				var attr = node.attributes.getNamedItem(bAttrName);
-				if (attr)
+				var attrValue = Spry.Utils.getAttribute(node, bAttrName);
+				if (attrValue != undefined)
 				{
 					var behavior = bAttrs[bAttrName];
 					if (behavior && behavior.attach)
-						behavior.attach(rgn, node, attr.value);
+						behavior.attach(rgn, node, attrValue);
 				}
 			}
 		} catch(e) {}
@@ -4154,9 +4314,9 @@ Spry.Data.Region.PI.buildOpenTagForValueAttr = function(ele, piName, attrName)
 
 	try
 	{
-		var testAttr = ele.attributes.getNamedItem(piName);
-		if (testAttr && testAttr.value)
-			jsExpr = Spry.Utils.encodeEntities(testAttr.value);
+		var testAttrValue = Spry.Utils.getAttribute(ele, piName);
+		if (testAttrValue)
+			jsExpr = Spry.Utils.encodeEntities(testAttrValue);
 	}
 	catch (e) { jsExpr = ""; }
 
@@ -4184,38 +4344,23 @@ Spry.Data.Region.PI.buildOpenTagForRepeat = function(ele, piName)
 	if (!ele || !piName)
 		return "";
 
-	var selectAttrStr = "";
-
-	try
-	{
-		var selectAttr = ele.attributes.getNamedItem(piName);
-		if (selectAttr && selectAttr.value)
-		{
-			selectAttrStr = selectAttr.value;
-			selectAttrStr = selectAttrStr.replace(/\s/g, "");
-		}
-	}
-	catch (e) { selectAttrStr = ""; }
-
-	if (!selectAttrStr)
+	var selectAttrStr = Spry.Utils.getAttribute(ele, piName);
+	if (selectAttrStr)
+		selectAttrStr = selectAttrStr.replace(/\s/g, "");
+	else
 	{
 		Spry.Debug.reportError(piName + " attribute requires a data set name!\n");
 		return "";
 	}
 
 	var testAttrStr = "";
-
-	try
+	var testAttrValue = Spry.Utils.getAttribute(ele, "spry:test");
+	if (testAttrValue != undefined)
 	{
-		var testAttr = ele.attributes.getNamedItem("spry:test");
-		if (testAttr)
-		{
-			if (testAttr.value)
-				testAttrStr = " test=\"" + Spry.Utils.encodeEntities(testAttr.value) + "\"";
-			ele.attributes.removeNamedItem(testAttr.nodeName);
-		}
+		if (testAttrValue)
+			testAttrStr = " test=\"" + Spry.Utils.encodeEntities(testAttrValue) + "\"";
+		Spry.Utils.removeAttribute(ele, "spry:test");
 	}
-	catch (e) { testAttrStr = ""; }
 
 	return "<" + Spry.Data.Region.PI.instructions[piName].tagName + " select=\"" + selectAttrStr + "\"" + testAttrStr + ">";
 };
@@ -4229,9 +4374,9 @@ Spry.Data.Region.PI.buildOpenTagForContent = function(ele, piName)
 
 	try
 	{
-		var contentAttr = ele.attributes.getNamedItem(piName);
-		if (contentAttr && contentAttr.value)
-			dataRefStr = Spry.Utils.encodeEntities(contentAttr.value);
+		var contentAttrValue = Spry.Utils.getAttribute(ele, piName);
+		if (contentAttrValue)
+			dataRefStr = Spry.Utils.encodeEntities(contentAttrValue);
 	}
 	catch (e) { dataRefStr = ""; }
 

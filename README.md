@@ -1,3 +1,9 @@
+<section id="s1">
+	<h1>Spry</h1>
+	<p>Spry is a JavaScript-based framework that enables the rapid development of Ajax-powered web pages.</p>
+	<p>Spry was designed to feel like an extension of HTML and CSS, so anyone with basic web-production skills can create next-generation web experiences by adding the power of Ajax to their pages.</p>
+	<p>Spry can be used with any server-side technology (ColdFusion, PHP, ASP.Net etc.). By building the front-end of your web application with Spry you enable a more efficient designer-developer workflow by keeping UI separated from back-end application logic.</p>
+</section>
 # Spry
 
 

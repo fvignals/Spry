@@ -42,7 +42,7 @@ The Spry framework has reached end-of-life and no further updates will be made. 
 
 ### What is included in 1.6.1
 
-<p><strong><a href="http://adobe.github.com/Spry/docs.html">Articles</a></strong> - <a href="http://adobe.github.com/Spry/docs.html">Documentation</a> that describe the Spry framework.</p>
+<p><strong><a href="http://fvignals.github.io/Spry/docs.html">Articles</a></strong> - <a href="http://adobe.github.com/Spry/docs.html">Documentation</a> that describe the Spry framework.</p>
 <p><strong><a href="https://github.com/adobe/Spry/tree/master/data">Data</strong> - The XML data files used in all our sample files. </p>
 <p><strong><a href="http://adobe.github.com/Spry/demos/">Demos</a></strong> - More <a href="http://adobe.github.com/Spry/demos/index.html">complex samples</a> that show the Spry framework in action.</p>
 <ul>
